@@ -280,6 +280,7 @@ def main(argv: Sequence[str]) -> None:
         clipped_grad_sum, noise_state
     )
     updates, opt_state = optimizer.update(noisy_grad, opt_state)
+    # pyrefly: ignore[bad-assignment]
     model_params = optax.apply_updates(model_params, updates)
     return model_params, opt_state, loss, noise_state
 
@@ -310,7 +311,7 @@ def main(argv: Sequence[str]) -> None:
 
     if step % 20 == 0:
       print(f'Step {step}, Loss: {loss:.4f}')
-
+  # pyrefly: ignore[unbound-name]
   assert loss < 4.8, f'Final loss {loss:.3f} is too high!'
 
   # Generate sample text with a seed from Shakespeare
