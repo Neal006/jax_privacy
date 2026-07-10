@@ -49,12 +49,12 @@ import math
 import types
 from typing import Any
 
-import chex
 import dp_accounting
 import jax
 import jax.numpy as jnp
 import keras
 import numpy as np
+import optax
 
 from . import _validate
 from . import accounting
@@ -390,9 +390,9 @@ class _PoissonSampledTrainingDataset(keras.utils.PyDataset):
 
   def __init__(
       self,
-      x: chex.ArrayTree,
-      y: chex.ArrayTree | None,
-      sample_weight: chex.ArrayTree | None,
+      x: optax.ArrayTree,
+      y: optax.ArrayTree | None,
+      sample_weight: optax.ArrayTree | None,
       *,
       dp_params: DPKerasConfig,
       steps_per_epoch: int,
@@ -415,7 +415,7 @@ class _PoissonSampledTrainingDataset(keras.utils.PyDataset):
 
   def __getitem__(
       self, index: int
-  ) -> tuple[chex.ArrayTree, chex.ArrayTree | None, chex.ArrayTree]:
+  ) -> tuple[optax.ArrayTree, optax.ArrayTree | None, optax.ArrayTree]:
     padded_indices = self._epoch_batches[index]
     batched_x = _take_batch_from_tree(self._x, padded_indices)
     batched_y = _take_batch_from_tree(self._y, padded_indices)
@@ -495,7 +495,7 @@ def _pad_batch_indices(indices: np.ndarray, multiple: int) -> np.ndarray:
   return batch_selection.pad_to_multiple_of(indices, multiple)
 
 
-def _tree_batch_size(tree: chex.ArrayTree) -> int:
+def _tree_batch_size(tree: optax.ArrayTree) -> int:
   """Returns and validates the batch size of a pytree of arrays."""
   leaves = jax.tree.leaves(tree)
   # Expected input: a non-empty pytree of random-access arrays whose leaves all
@@ -530,7 +530,9 @@ def _tree_batch_size(tree: chex.ArrayTree) -> int:
   return int(batch_size)
 
 
-def _take_batch_from_leaf(leaf: chex.Array, indices: np.ndarray) -> np.ndarray:
+def _take_batch_from_leaf(
+    leaf: jax.typing.ArrayLike, indices: np.ndarray
+) -> np.ndarray:
   """Slices one batched leaf and zero-fills padded ``-1`` index positions."""
   leaf = np.asarray(leaf)
   valid_positions = indices >= 0
@@ -541,17 +543,17 @@ def _take_batch_from_leaf(leaf: chex.Array, indices: np.ndarray) -> np.ndarray:
 
 
 def _take_batch_from_tree(
-    tree: chex.ArrayTree | None, indices: np.ndarray
-) -> chex.ArrayTree | None:
+    tree: optax.ArrayTree | None, indices: np.ndarray
+) -> optax.ArrayTree | None:
   if tree is None:
     return None
   return jax.tree.map(lambda leaf: _take_batch_from_leaf(leaf, indices), tree)
 
 
 def _build_batch_sample_weight(
-    sample_weight: chex.ArrayTree | None,
+    sample_weight: optax.ArrayTree | None,
     indices: np.ndarray,
-) -> chex.ArrayTree:
+) -> optax.ArrayTree:
   """Builds sample weights that hide synthetic padding examples from Keras."""
   if sample_weight is None:
     return (indices >= 0).astype(np.float32)
@@ -587,8 +589,8 @@ def _maybe_symbolically_build_private_model(
 
 
 def _masked_mean(
-    values: chex.Array, is_padding_example: jax.Array
-) -> chex.Array:
+    values: jax.typing.ArrayLike, is_padding_example: jax.Array
+) -> jax.Array:
   """Averages only the non-padding examples, returning 0 for empty batches."""
   values = jnp.asarray(values)
   if values.ndim == 0:
@@ -763,14 +765,14 @@ def _check_dp_params_aligned_with_fit_args(
     )
 
 
-_XType = chex.ArrayTree
-_YType = chex.ArrayTree
-_SampleWeightType = chex.ArrayTree
-_TrainableVariablesType = chex.ArrayTree
-_NonTrainableVariablesType = list[chex.Numeric]
-_OptimizerVariablesType = list[chex.Numeric]
-_MetricsVariablesType = chex.Numeric
-_UnscaledLossType = chex.Numeric
+_XType = optax.ArrayTree
+_YType = optax.ArrayTree
+_SampleWeightType = optax.ArrayTree
+_TrainableVariablesType = optax.ArrayTree
+_NonTrainableVariablesType = list[jax.typing.ArrayLike]
+_OptimizerVariablesType = list[jax.typing.ArrayLike]
+_MetricsVariablesType = jax.typing.ArrayLike
+_UnscaledLossType = jax.typing.ArrayLike
 _YPredType = _YType
 _KerasInputsDataType = tuple[_XType, _YType | None, _SampleWeightType | None]
 
@@ -788,7 +790,7 @@ _AuxType = tuple[
     _MetricsVariablesType,
 ]
 
-_LogsType = dict[str, chex.Numeric]
+_LogsType = dict[str, jax.typing.ArrayLike]
 
 
 def _dp_train_step(
@@ -895,7 +897,7 @@ def _dp_train_step(
   return logs, state
 
 
-LossFn = Callable[..., tuple[chex.Numeric, _AuxType]]
+LossFn = Callable[..., tuple[jax.typing.ArrayLike, _AuxType]]
 
 
 def _resolve_noise_multiplier(
@@ -931,7 +933,7 @@ def _noised_clipped_grads(
     model: keras.Model | None = None,
     *,
     is_padding_example: jax.Array | None = None,
-) -> tuple[tuple[chex.Numeric, _AuxType], chex.ArrayTree]:
+) -> tuple[tuple[jax.typing.ArrayLike, _AuxType], optax.ArrayTree]:
   """Computes noised and clipped gradients.
 
   Args:

@@ -18,12 +18,11 @@ from collections.abc import Callable
 import dataclasses
 from typing import Any, TypeAlias, TypeVar
 
-import chex
 import jax
 import jax.numpy as jnp
 import optax
 
-ParamT = TypeVar('ParamT', bound=chex.ArrayTree)
+ParamT = TypeVar('ParamT', bound=optax.ArrayTree)
 
 DEFAULT_OPTIMIZER = optax.lbfgs(
     memory_size=1, linesearch=optax.scale_by_backtracking_linesearch(128)
@@ -44,8 +43,8 @@ class CallbackArgs:
 
   step: int
   loss: jnp.ndarray
-  grad: chex.ArrayTree | None
-  params: chex.ArrayTree
+  grad: optax.ArrayTree | None
+  params: optax.ArrayTree
   state: Any
 
 

@@ -31,9 +31,9 @@ Differentially Private ML](https://arxiv.org/abs/2405.15913) and in
 import math
 from typing import Any, Callable, TypeAlias
 
-import chex
 import jax
 import numpy as np
+import optax
 
 
 PyTree: TypeAlias = Any
@@ -285,9 +285,9 @@ def _parallel_sample(
 
 def parallel_sample_pytree(
     rng: np.random.Generator,
-    struct: chex.ArrayTree,
+    struct: optax.ArrayTree,
     sampler: Callable[..., np.ndarray] = np.random.Generator.standard_normal,
-) -> chex.ArrayTree:
+) -> optax.ArrayTree:
   """Sample a pytree with numpy and convert it to a sharded JAX pytree.
 
   This function is intended to bridge the gap between JAX programs and

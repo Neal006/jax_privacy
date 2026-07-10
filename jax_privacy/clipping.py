@@ -22,7 +22,6 @@ import math
 import numbers
 from typing import Any, Callable, TypeAlias
 
-import chex
 import dp_accounting
 import jax
 import jax.numpy as jnp
@@ -30,7 +29,7 @@ from jax_privacy import _validate
 import optax
 from optax import microbatching
 
-PyTree: TypeAlias = chex.ArrayTree
+PyTree: TypeAlias = optax.ArrayTree
 AuxiliaryOutput = collections.namedtuple('Aux', ['values', 'grad_norms', 'aux'])
 ClippedTreeAndNorm = collections.namedtuple(
     '_ClippedTreeAndNorm', ['clipped', 'norm']
