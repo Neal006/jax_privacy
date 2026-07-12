@@ -25,9 +25,9 @@ not catastrophic failures. Roughly speaking, the floating point errors in
 computing the probabilities are added to the delta term in differential privacy.
 """
 
-import chex
 import jax
 import numpy as np
+import optax
 
 
 def _get_sampling_parameters(sigma: float, size: int) -> tuple[float, int]:
@@ -132,10 +132,10 @@ def sample_discrete_gaussian(
 def sample_discrete_gaussian_pytree(
     rng: np.random.Generator,
     sigma: float,
-    pytree: chex.ArrayTree,
+    pytree: optax.ArrayTree,
     oversample: int | None = None,
     dtype: np.typing.DTypeLike = np.int64,
-) -> chex.ArrayTree:
+) -> optax.ArrayTree:
   """Generates discrete Gaussian samples matching the structure of a PyTree.
 
   Specifically, samples a flat array of discrete Gaussian noise for the total

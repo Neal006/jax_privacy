@@ -20,12 +20,11 @@ from collections.abc import Callable
 import dataclasses
 from typing import Any, Generic, TypeAlias, TypeVar
 
-import chex
 import jax
 from jax import numpy as jnp
+import optax
 
-
-State = TypeVar('State', bound=chex.ArrayTree)
+State = TypeVar('State', bound=optax.ArrayTree)
 Shape: TypeAlias = tuple[int, ...]
 ShapePyTree = Any
 
@@ -77,8 +76,10 @@ class StreamingMatrix(Generic[State]):
       (next_input, current_state).
   """
 
-  init_multiply: Callable[[chex.ArrayTree], State]
-  multiply_next: Callable[[chex.ArrayTree, State], tuple[chex.ArrayTree, State]]
+  init_multiply: Callable[[optax.ArrayTree], State]
+  multiply_next: Callable[
+      [optax.ArrayTree, State], tuple[optax.ArrayTree, State]
+  ]
 
   @classmethod
   def from_array_implementation(

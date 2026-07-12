@@ -15,10 +15,10 @@
 """Class and instances for expressing and optimizing banded strategies."""
 
 from collections.abc import Callable
+import dataclasses
 import functools
 from typing import Any
 
-import chex
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -34,7 +34,8 @@ from . import streaming_matrix
 # pylint:disable=invalid-name
 
 
-@chex.dataclass
+@jax.tree_util.register_dataclass
+@dataclasses.dataclass
 class ColumnNormalizedBanded:
   """A column-normalized banded lower triangular n x n matrix.
 

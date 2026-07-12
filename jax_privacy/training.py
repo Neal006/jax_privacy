@@ -28,7 +28,6 @@ import functools
 from typing import Protocol, TypeAlias
 
 from absl import logging
-import chex
 import jax
 import jax_privacy
 from jax_privacy import _validate
@@ -45,13 +44,13 @@ DPExecutionPlan = execution_plan.DPExecutionPlan
 PerformanceFlags = execution_plan.PerformanceFlags
 
 Loss: TypeAlias = jax.Array
-Aux: TypeAlias = chex.ArrayTree
+Aux: TypeAlias = optax.ArrayTree
 PerExampleAux: TypeAlias = jax_privacy.clipping.AuxiliaryOutput
-Batch: TypeAlias = chex.ArrayTree
-Dataset: TypeAlias = chex.ArrayTree
-Params: TypeAlias = chex.ArrayTree
-OptState: TypeAlias = chex.ArrayTree
-NoiseState: TypeAlias = chex.ArrayTree
+Batch: TypeAlias = optax.ArrayTree
+Dataset: TypeAlias = optax.ArrayTree
+Params: TypeAlias = optax.ArrayTree
+OptState: TypeAlias = optax.ArrayTree
+NoiseState: TypeAlias = optax.ArrayTree
 PrecompiledFuture: TypeAlias = concurrent.futures.Future[jax.stages.Compiled]
 
 # Shared thread pool for background ahead-of-time compilation.
@@ -97,7 +96,8 @@ class LossFn(Protocol):
     ...
 
 
-@chex.dataclass(frozen=True, kw_only=True)
+@jax.tree_util.register_dataclass
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class TrainingState:
   """Container for the state of the training loop."""
 

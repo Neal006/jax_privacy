@@ -24,7 +24,6 @@ import functools
 from typing import Any, TypeAlias
 
 from absl import logging
-import chex
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -48,7 +47,7 @@ from . import toeplitz
 
 
 ThetaPairType: TypeAlias = tuple[jax.Array, jax.Array]
-ScalarFloat: TypeAlias = chex.Numeric | float
+ScalarFloat: TypeAlias = jax.typing.ArrayLike
 
 
 def _gpu_or_cpu_device() -> jax.Device:
@@ -157,7 +156,8 @@ class StreamingMatrixBuilder:
     )
 
 
-@chex.dataclass
+@jax.tree_util.register_dataclass
+@dataclasses.dataclass
 class BufferedToeplitz:
   """A lower-triangular Toeplitz C parameterized as a BLT.
 
@@ -832,7 +832,7 @@ class Parameterization:
     loss_fn: The loss function to optimize.
   """
 
-  params_from_blt: Callable[[BufferedToeplitz], chex.ArrayTree]
+  params_from_blt: Callable[[BufferedToeplitz], optax.ArrayTree]
   blt_and_inverse_from_params: Callable[
       [Any],
       tuple[BufferedToeplitz, BufferedToeplitz],
@@ -880,7 +880,7 @@ class Parameterization:
 
   def get_loss_fn(
       self, loss_fn: LossFn
-  ) -> Callable[[chex.ArrayTree], ScalarFloat]:
+  ) -> Callable[[optax.ArrayTree], ScalarFloat]:
     """Returns a loss function for the parameterization."""
     return lambda params: loss_fn.penalized_loss(
         *self.blt_and_inverse_from_params(params)
@@ -1146,7 +1146,7 @@ def optimize(
 
 
 def geometric_sum(
-    a: jax.Array, r: jax.Array, num: chex.Numeric = jnp.inf
+    a: jax.Array, r: jax.Array, num: jax.typing.ArrayLike = jnp.inf
 ) -> jax.Array:
   """Sum a + a*r + a*r**2 + ... + a*r**(num-1) (or limit if num=jnp.inf).
 
@@ -1288,7 +1288,9 @@ def blt_pair_from_theta_pair(
 
 @jax.jit
 @require_buf_decay_less_eq_one
-def sensitivity_squared(blt: BufferedToeplitz, n: chex.Numeric) -> float:
+def sensitivity_squared(
+    blt: BufferedToeplitz, n: jax.typing.ArrayLike
+) -> float:
   """Computes sensitivity**2 for a BLT strategy matrix C.
 
   See https://arxiv.org/pdf/2404.16706 Lemma 5.3
@@ -1483,7 +1485,9 @@ def robust_max_error_Gamma_jk(
 
 
 @jax.jit
-def iteration_error(inv_blt: BufferedToeplitz, i: chex.Array) -> jax.Array:
+def iteration_error(
+    inv_blt: BufferedToeplitz, i: jax.typing.ArrayLike
+) -> jax.Array:
   """Computes the error on iteration `i` which is also the max error.
 
   That is, for a Buffered Linear Toeplitz matrix, the max error from iteration 0
@@ -1526,7 +1530,7 @@ def iteration_error(inv_blt: BufferedToeplitz, i: chex.Array) -> jax.Array:
 
 
 @jax.jit
-def max_error(inv_blt: BufferedToeplitz, n: chex.Array) -> jax.Array:
+def max_error(inv_blt: BufferedToeplitz, n: jax.typing.ArrayLike) -> jax.Array:
   """Returns the max squared error for any iteration 0, ..., n-1."""
   # Note: For a BLT, the iteration error is increasing in `i`, so:
   return iteration_error(inv_blt, n - 1)

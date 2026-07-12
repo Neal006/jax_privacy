@@ -68,7 +68,7 @@ extensions = [
 
 autodoc_type_aliases = {
     'ArrayLike': 'jax.typing.ArrayLike',
-    'ArrayTree': 'chex.ArrayTree',
+    'ArrayTree': 'optax.ArrayTree',
 }
 
 autosummary_generate = True
