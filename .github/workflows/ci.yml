@@ -101,6 +101,9 @@ jobs:
           pytype jax_privacy -k
           pytype tests -k
           pytype examples -k
+      - name: Run pyrefly
+        run: |
+          pyrefly check
 
   test:
     name: "Unit Test: Python ${{ matrix.python-version }} on ${{ matrix.os }}"
