@@ -150,6 +150,33 @@ class ExecutionPlanTest(parameterized.TestCase):
     ).calibrate(epsilon=1.0, delta=1e-06)
     self.assertLess(config1.rmse, config2.rmse)
 
+  def test_non_private_config(self):
+    """Tests that NonPrivateConfig creates a valid non-private plan."""
+    iterations = 20
+    batch_size = 5
+    config = execution_plan.NonPrivateConfig(
+        iterations=iterations,
+        batch_size=batch_size,
+    )
+    plan = config.make()
+
+    self.assertIsInstance(plan, execution_plan.DPExecutionPlan)
+    self.assertIsInstance(
+        plan.batch_selection_strategy, batch_selection.FixedBatchSampling
+    )
+    self.assertEqual(plan.batch_selection_strategy.batch_size, batch_size)
+    self.assertEqual(plan.batch_selection_strategy.iterations, iterations)
+    self.assertIsInstance(
+        plan.noise_addition_transform, optax.GradientTransformation
+    )
+    self.assertIsInstance(plan.dp_event, dp_accounting.DpEvent)
+
+    # Verify that the privatizer acts as identity (no-op)
+    dummy_grads = {"w": np.ones((2, 2))}
+    opt_state = plan.noise_addition_transform.init(dummy_grads)
+    updates, _ = plan.noise_addition_transform.update(dummy_grads, opt_state)
+    np.testing.assert_equal(updates, dummy_grads)
+
 
 if __name__ == "__main__":
   absltest.main()

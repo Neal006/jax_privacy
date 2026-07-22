@@ -88,6 +88,8 @@ class PerformanceFlags:
     microbatch_size: If set, per-example gradient computation is broken into
       sequential microbatches to reduce peak memory at the cost of compute.
     spmd_axis_name: Axis name for distributed vmap in SPMD settings.
+    keep_batch_dim: Whether to keep the batch dimension when computing
+      per-example gradients.
   """
 
   dtype: jax.typing.DTypeLike = np.float32
@@ -97,6 +99,7 @@ class PerformanceFlags:
   )
   microbatch_size: int | None = None
   spmd_axis_name: str | None = None
+  keep_batch_dim: bool = True
 
 
 @dataclasses.dataclass(frozen=True)
@@ -418,6 +421,7 @@ class BandMFConfig:
           dtype=performance_flags.dtype,
           microbatch_size=performance_flags.microbatch_size,
           spmd_axis_name=performance_flags.spmd_axis_name,
+          keep_batch_dim=performance_flags.keep_batch_dim,
       )
 
     sampling_prob = (
@@ -457,4 +461,58 @@ class BandMFConfig:
         noise_addition_transform=privatizer,
         dp_event=dp_event,
         neighboring_relation=self._neighboring_relation,
+    )
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class NonPrivateConfig:
+  """Configuration for a non-private execution plan (no clipping, no noise).
+
+  This config is designed for standard training, bypassing privacy safeguards
+  (clipping norm is set to infinity, and noise stddev is zero).
+
+  Attributes:
+    iterations: The number of iterations to train for.
+    batch_size: The batch size to use for training.
+  """
+
+  iterations: int
+  batch_size: int
+
+  def make(
+      self,
+      performance_flags: PerformanceFlags | None = None,
+  ) -> DPExecutionPlan:
+    """Returns a DPExecutionPlan configured for non-private training."""
+    if performance_flags is None:
+      performance_flags = PerformanceFlags()
+
+    @functools.wraps(clipping.clipped_grad)
+    def clipped_grad_transform(*args, **kwargs):
+      return clipping.clipped_grad(
+          *args,
+          **kwargs,
+          l2_clip_norm=float('inf'),
+          normalize_by=float(self.batch_size),
+          rescale_to_unit_norm=False,
+          dtype=performance_flags.dtype,
+          microbatch_size=performance_flags.microbatch_size,
+          spmd_axis_name=performance_flags.spmd_axis_name,
+          keep_batch_dim=performance_flags.keep_batch_dim,
+      )
+
+    batch_selection_strategy = batch_selection.FixedBatchSampling(
+        batch_size=self.batch_size,
+        iterations=self.iterations,
+    )
+
+    # Use optax.identity to avoid adding any noise
+    noise_addition_transform = optax.identity()
+
+    return DPExecutionPlan(
+        clipped_grad=clipped_grad_transform,
+        batch_selection_strategy=batch_selection_strategy,
+        noise_addition_transform=noise_addition_transform,
+        dp_event=dp_accounting.NonPrivateDpEvent(),
+        neighboring_relation=NeighboringRelation.ADD_OR_REMOVE_ONE,
     )

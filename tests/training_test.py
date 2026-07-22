@@ -86,6 +86,45 @@ class DPTrainerTest(parameterized.TestCase):
 
     self.assertFalse(jnp.allclose(state.params, params))
 
+  def test_non_private_training_runs(self):
+    """Verifies that DPTrainer runs successfully with NonPrivateConfig."""
+    params = jnp.array([5.0, 5.0])
+    dataset = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+    plan = execution_plan.NonPrivateConfig(
+        iterations=3,
+        batch_size=2,
+    ).make()
+    optimizer = optax.sgd(0.01)
+
+    trainer = training.DPTrainer(
+        plan=plan,
+        loss_fn=_quadratic_loss,
+        optimizer=optimizer,
+    )
+    state = trainer.fit(dataset, params, rng_or_seed=0)
+
+    self.assertIsInstance(state, training.TrainingState)
+    self.assertEqual(int(state.step), 3)
+
+  def test_non_private_params_change_after_training(self):
+    """Parameters should change from initial values after training."""
+    params = jnp.array([10.0, 10.0])
+    dataset = np.array([[0.0, 0.0], [0.0, 0.0]])
+    plan = execution_plan.NonPrivateConfig(
+        iterations=5,
+        batch_size=2,
+    ).make()
+    optimizer = optax.sgd(0.1)
+
+    trainer = training.DPTrainer(
+        plan=plan,
+        loss_fn=_quadratic_loss,
+        optimizer=optimizer,
+    )
+    state = trainer.fit(dataset, params, rng_or_seed=42)
+
+    self.assertFalse(jnp.allclose(state.params, params))
+
   def test_callback_invoked(self):
     """Callback should be invoked once per training step."""
     params = jnp.array([1.0])
