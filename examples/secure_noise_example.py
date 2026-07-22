@@ -68,11 +68,15 @@ GRID_SCALE = 10**9  # Number of integer grid steps per L2_CLIP_NORM.
 def _create_secure_prng() -> np.random.Generator:
   """Creates a cryptographically secure PRNG, falling back to standard NumPy."""
   try:
+    # Make sure this example still works in environments where randomgen is
+    # not installed.
     # pylint: disable-next=g-import-not-at-top,import-outside-toplevel
     import randomgen  # pytype: disable=import-error
 
     rng = randomgen.RDRAND()  # pytype: disable=module-attr
-    return np.random.Generator(rng)
+    # randomgen.RDRAND is a numpy BitGenerator at runtime, but its stubs do
+    # not declare that, so pyrefly wrongly rejects the argument.
+    return np.random.Generator(rng)  # pyrefly: ignore[bad-argument-type]
   except ImportError:
     warnings.warn(
         'randomgen is not installed. Falling back to a standard NumPy PRNG. '
