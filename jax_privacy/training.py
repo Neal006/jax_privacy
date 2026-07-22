@@ -37,10 +37,10 @@ from jax_privacy import optimizers as aug_optimizers
 import numpy as np
 import optax
 
-
 # Re-export key symbols so users can access them via jax_privacy.training.
 BandMFConfig = execution_plan.BandMFConfig
 DPExecutionPlan = execution_plan.DPExecutionPlan
+ExecutionPlanConfig = execution_plan.ExecutionPlanConfig
 PerformanceFlags = execution_plan.PerformanceFlags
 
 Loss: TypeAlias = jax.Array
@@ -132,7 +132,11 @@ def _get_batch(dataset: Batch, indices: np.ndarray) -> tuple[Batch, jax.Array]:
   return jax.tree.map(_index_and_zero, dataset), jax.device_put(is_padding)
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
+# DPTrainer contains static configuration that defines the training step, but
+# not all fields are hashable (e.g., BandMFConfig contains an `array` field).
+# To get jax.jit to work, we use `eq=False` below to hash based on object ID.
+# TODO: Refactor to reduce unnecessary recompilations.
+@dataclasses.dataclass(frozen=True, kw_only=True, eq=False)
 class DPTrainer:
   """Stateless trainer encapsulating the static configuration of a DP loop.
 
@@ -143,12 +147,15 @@ class DPTrainer:
 
   **Sharding**: This class does not shard params or data.  For
   multi-device training, provide ``params`` with explicit sharding
-  annotations and configure ``spmd_axis_name`` through the plan's
-  ``PerformanceFlags``.  If data sharding is needed, ``loss_fn``
+  annotations and configure ``spmd_axis_name`` through
+  ``performance_flags``.  If data sharding is needed, ``loss_fn``
   should reshard its inputs using sharding-in-types.
 
   Attributes:
-    plan: A ``DPExecutionPlan`` specifying the DP mechanism.
+    config: An :class:`ExecutionPlanConfig` (e.g. ``BandMFConfig``) specifying
+      the DP mechanism.
+    performance_flags: Performance-only flags (numerical precision, sharding,
+      memory/compute trade-offs) that do not affect the privacy guarantee.
     loss_fn: The per-example loss function.  See :class:`LossFn`.
     optimizer: An ``AugmentedGradientTransformation`` or a plain
       ``optax.GradientTransformation``.
@@ -156,7 +163,10 @@ class DPTrainer:
       to limit JIT recompilations from varying Poisson batch sizes.
   """
 
-  plan: execution_plan.DPExecutionPlan
+  config: execution_plan.ExecutionPlanConfig
+  performance_flags: execution_plan.PerformanceFlags = dataclasses.field(
+      default_factory=execution_plan.PerformanceFlags
+  )
   loss_fn: LossFn
   optimizer: (
       aug_optimizers.AugmentedGradientTransformation
@@ -164,14 +174,26 @@ class DPTrainer:
   )
   padding_multiple: int = 32
 
+  def __post_init__(self):
+    _ = self.plan  # Build untraced so cached PRNG key isn't a leaked tracer.
+
+  @functools.cached_property
+  def plan(self) -> execution_plan.DPExecutionPlan:
+    """``DPExecutionPlan`` built from ``config`` and ``performance_flags``."""
+    return self.config.make(self.performance_flags)
+
   def init(self, params: Params) -> TrainingState:
     """Initialize a ``TrainingState`` at step 0."""
     optimizer = aug_optimizers.as_augmented_optimizer(self.optimizer)
+    # jax_privacy will sometimes upcast gradients to a higher dtype for
+    # numerical stability, regardless of the dtype of params.
+    grads_like = optax.tree.cast(params, self.performance_flags.dtype)
+    noise_state = self.plan.noise_addition_transform.init(grads_like)
     return TrainingState(
-        step=0,
+        step=jax.numpy.zeros((), dtype=jax.numpy.int32),
         params=params,
-        opt_state=optimizer.init(params),
-        noise_state=self.plan.noise_addition_transform.init(params),
+        opt_state=optimizer.init(grads_like),
+        noise_state=noise_state,
     )
 
   @jax.jit(static_argnames=["self"], donate_argnames=["state"])
@@ -201,7 +223,6 @@ class DPTrainer:
     """
     optimizer = aug_optimizers.as_augmented_optimizer(self.optimizer)
     pre_clip_fn = optimizer.pre_clipping_transform(state.opt_state)
-
     grad_fn = self.plan.clipped_grad(
         self.loss_fn,
         has_aux=True,
@@ -210,12 +231,10 @@ class DPTrainer:
         pre_clipping_transform=pre_clip_fn,
         prng_argnum=2,
     )
-
     loss_prng = jax.random.fold_in(prng_key, state.step)
     clipped_grad_sum, aux = grad_fn(
         state.params, batch, loss_prng, is_padding_example=is_padding_example
     )
-
     dp_grad, new_noise_state = self.plan.noise_addition_transform.update(
         clipped_grad_sum, state.noise_state
     )

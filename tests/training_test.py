@@ -32,22 +32,31 @@ def _quadratic_loss(params, batch, prng):
   return loss, {'loss': loss}
 
 
-def _make_plan(
+def _make_config(
     iterations,
     noise_multiplier=1.0,
     expected_participations=None,
-    performance_flags=None,
 ):
-  """Creates a simple BandMF execution plan for testing."""
+  """Creates a simple BandMF config for testing."""
   if expected_participations is None:
     expected_participations = iterations
-  config = execution_plan.BandMFConfig.default(
+  return execution_plan.BandMFConfig.default(
       num_bands=1,
       iterations=iterations,
       noise_multiplier=noise_multiplier,
       expected_participations=expected_participations,
   )
-  return config.make(performance_flags=performance_flags)
+
+
+@dataclasses.dataclass(frozen=True)
+class _FixedPlanConfig:
+  """An ``ExecutionPlanConfig`` that returns a pre-built plan (for tests)."""
+
+  plan: execution_plan.DPExecutionPlan
+
+  def make(self, performance_flags=None):
+    del performance_flags  # The plan is already built.
+    return self.plan
 
 
 class DPTrainerTest(parameterized.TestCase):
@@ -57,11 +66,11 @@ class DPTrainerTest(parameterized.TestCase):
     """Train loop completes and returns a valid TrainingState."""
     params = jnp.array([5.0, 5.0])
     dataset = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
-    plan = _make_plan(iterations=3)
+    config = _make_config(iterations=3)
     optimizer = optax.sgd(0.01)
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
         loss_fn=_quadratic_loss,
         optimizer=optimizer,
     )
@@ -74,11 +83,11 @@ class DPTrainerTest(parameterized.TestCase):
     """Parameters should change from initial values after training."""
     params = jnp.array([10.0, 10.0])
     dataset = np.array([[0.0, 0.0], [0.0, 0.0]])
-    plan = _make_plan(iterations=5)
+    config = _make_config(iterations=5)
     optimizer = optax.sgd(0.1)
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
         loss_fn=_quadratic_loss,
         optimizer=optimizer,
     )
@@ -90,16 +99,12 @@ class DPTrainerTest(parameterized.TestCase):
     """Verifies that DPTrainer runs successfully with NonPrivateConfig."""
     params = jnp.array([5.0, 5.0])
     dataset = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
-    plan = execution_plan.NonPrivateConfig(
-        iterations=3,
-        batch_size=2,
-    ).make()
-    optimizer = optax.sgd(0.01)
+    config = execution_plan.NonPrivateConfig(iterations=3, batch_size=2)
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
         loss_fn=_quadratic_loss,
-        optimizer=optimizer,
+        optimizer=optax.sgd(0.01),
     )
     state = trainer.fit(dataset, params, rng_or_seed=0)
 
@@ -110,16 +115,12 @@ class DPTrainerTest(parameterized.TestCase):
     """Parameters should change from initial values after training."""
     params = jnp.array([10.0, 10.0])
     dataset = np.array([[0.0, 0.0], [0.0, 0.0]])
-    plan = execution_plan.NonPrivateConfig(
-        iterations=5,
-        batch_size=2,
-    ).make()
-    optimizer = optax.sgd(0.1)
+    config = execution_plan.NonPrivateConfig(iterations=5, batch_size=2)
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
         loss_fn=_quadratic_loss,
-        optimizer=optimizer,
+        optimizer=optax.sgd(0.1),
     )
     state = trainer.fit(dataset, params, rng_or_seed=42)
 
@@ -130,7 +131,7 @@ class DPTrainerTest(parameterized.TestCase):
     params = jnp.array([1.0])
     dataset = np.array([[0.0], [1.0]])
     iterations = 3
-    plan = _make_plan(iterations=iterations)
+    config = _make_config(iterations=iterations)
     optimizer = optax.sgd(0.01)
     callback_log = []
 
@@ -141,7 +142,7 @@ class DPTrainerTest(parameterized.TestCase):
       self.assertIsNotNone(aux.aux)
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
         loss_fn=_quadratic_loss,
         optimizer=optimizer,
     )
@@ -159,11 +160,11 @@ class DPTrainerTest(parameterized.TestCase):
     """Training should work with padding_multiple set."""
     params = jnp.array([1.0])
     dataset = np.array([[0.0], [1.0], [2.0]])
-    plan = _make_plan(iterations=2)
+    config = _make_config(iterations=2)
     optimizer = optax.sgd(0.01)
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
         loss_fn=_quadratic_loss,
         optimizer=optimizer,
         padding_multiple=4,
@@ -175,17 +176,17 @@ class DPTrainerTest(parameterized.TestCase):
   def test_zero_iterations_config_raises(self):
     """BandMFConfig requires iterations >= 1."""
     with self.assertRaises(Exception):
-      _make_plan(iterations=0)
+      _make_config(iterations=0)
 
   def test_single_iteration(self):
     """Training with a single iteration should work correctly."""
     params = jnp.array([5.0, 5.0])
     dataset = np.array([[1.0, 0.0]])
-    plan = _make_plan(iterations=1)
+    config = _make_config(iterations=1)
     optimizer = optax.sgd(0.01)
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
         loss_fn=_quadratic_loss,
         optimizer=optimizer,
     )
@@ -205,13 +206,13 @@ class DPTrainerTest(parameterized.TestCase):
 
     params = jnp.array([1.0])
     dataset = np.array([[0.0], [1.0]])
-    plan = _make_plan(iterations=3)
+    config = _make_config(iterations=3)
     optimizer = optax.sgd(0.01)
 
     jax.clear_caches()
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
         loss_fn=counting_loss,
         optimizer=optimizer,
     )
@@ -223,11 +224,11 @@ class DPTrainerTest(parameterized.TestCase):
   def test_train_step_callable_directly(self):
     """train_step should be directly callable outside of fit()."""
     params = jnp.array([5.0, 5.0])
-    plan = _make_plan(iterations=2, noise_multiplier=0.0)
+    config = _make_config(iterations=2, noise_multiplier=0.0)
     optimizer = optax.sgd(0.01)
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
         loss_fn=_quadratic_loss,
         optimizer=optimizer,
     )
@@ -236,7 +237,7 @@ class DPTrainerTest(parameterized.TestCase):
         step=0,
         params=jnp.copy(params),
         opt_state=optimizer.init(params),
-        noise_state=plan.noise_addition_transform.init(params),
+        noise_state=trainer.plan.noise_addition_transform.init(params),
     )
 
     batch = jnp.array([[1.0, 0.0], [0.0, 1.0]])
@@ -251,11 +252,11 @@ class DPTrainerTest(parameterized.TestCase):
   def test_train_step_jit_compilable(self):
     """train_step should be JIT-compilable."""
     params = jnp.array([5.0])
-    plan = _make_plan(iterations=1, noise_multiplier=0.0)
+    config = _make_config(iterations=1, noise_multiplier=0.0)
     optimizer = optax.sgd(0.01)
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
         loss_fn=_quadratic_loss,
         optimizer=optimizer,
     )
@@ -264,7 +265,7 @@ class DPTrainerTest(parameterized.TestCase):
         step=0,
         params=params,
         opt_state=optimizer.init(params),
-        noise_state=plan.noise_addition_transform.init(params),
+        noise_state=trainer.plan.noise_addition_transform.init(params),
     )
 
     batch = jnp.array([[1.0], [0.0]])
@@ -284,11 +285,11 @@ class DPTrainerEdgeCasesTest(parameterized.TestCase):
     """Near-zero epsilon (very high noise) should run without error."""
     params = jnp.array([1.0, 2.0])
     dataset = np.array([[0.0, 0.0], [1.0, 1.0]])
-    plan = _make_plan(iterations=2, noise_multiplier=1e6)
+    config = _make_config(iterations=2, noise_multiplier=1e6)
     optimizer = optax.sgd(0.01)
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
         loss_fn=_quadratic_loss,
         optimizer=optimizer,
     )
@@ -301,11 +302,11 @@ class DPTrainerEdgeCasesTest(parameterized.TestCase):
     """noise_multiplier=0 should behave like non-private SGD."""
     params = jnp.array([5.0])
     dataset = np.array([[0.0], [0.0]])
-    plan = _make_plan(iterations=3, noise_multiplier=0.0)
+    config = _make_config(iterations=3, noise_multiplier=0.0)
     optimizer = optax.sgd(0.1)
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
         loss_fn=_quadratic_loss,
         optimizer=optimizer,
     )
@@ -321,11 +322,11 @@ class DPTrainerEdgeCasesTest(parameterized.TestCase):
     """Training on a single example should work correctly."""
     params = jnp.array([5.0])
     dataset = np.array([[0.0]])
-    plan = _make_plan(iterations=2, noise_multiplier=0.0)
+    config = _make_config(iterations=2, noise_multiplier=0.0)
     optimizer = optax.sgd(0.1)
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
         loss_fn=_quadratic_loss,
         optimizer=optimizer,
     )
@@ -344,11 +345,11 @@ class DPTrainerEdgeCasesTest(parameterized.TestCase):
       loss = jnp.mean((params - batch['x']) ** 2)
       return loss, {}
 
-    plan = _make_plan(iterations=2)
+    config = _make_config(iterations=2)
     optimizer = optax.sgd(0.01)
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
         loss_fn=dict_loss,
         optimizer=optimizer,
     )
@@ -357,19 +358,16 @@ class DPTrainerEdgeCasesTest(parameterized.TestCase):
     self.assertEqual(int(state.step), 2)
 
   def test_bfloat16_params_preserved(self):
-    """bfloat16 params with float32 plan should return bfloat16."""
+    """bfloat16 params with float32 aggregation should return bfloat16."""
     params = jnp.array([5.0, 5.0], dtype=jnp.bfloat16)
     dataset = np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
     flags = execution_plan.PerformanceFlags(dtype=np.float32)
-    plan = _make_plan(
-        iterations=2,
-        noise_multiplier=0.0,
-        performance_flags=flags,
-    )
+    config = _make_config(iterations=2, noise_multiplier=0.0)
     optimizer = optax.sgd(0.01)
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
+        performance_flags=flags,
         loss_fn=_quadratic_loss,
         optimizer=optimizer,
     )
@@ -384,11 +382,11 @@ class DPTrainerInitTest(parameterized.TestCase):
   def test_init_returns_training_state(self):
     """init() should return a TrainingState at step 0."""
     params = jnp.array([1.0, 2.0])
-    plan = _make_plan(iterations=3)
+    config = _make_config(iterations=3)
     optimizer = optax.sgd(0.01)
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
         loss_fn=_quadratic_loss,
         optimizer=optimizer,
     )
@@ -406,11 +404,11 @@ class DPTrainerPrecompileTest(parameterized.TestCase):
     """precompile() should return a dict of batch_size -> Future."""
     params = jnp.array([1.0, 2.0])
     dataset = np.array([[0.0, 0.0]] * 10)  # 10 examples.
-    plan = _make_plan(iterations=5)
+    config = _make_config(iterations=5)
     optimizer = optax.sgd(0.01)
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
         loss_fn=_quadratic_loss,
         optimizer=optimizer,
     )
@@ -428,12 +426,12 @@ class DPTrainerPrecompileTest(parameterized.TestCase):
     """All precompiled sizes should be multiples of padding_multiple."""
     params = jnp.array([1.0])
     dataset = np.array([[0.0]] * 20)  # 20 examples.
-    plan = _make_plan(iterations=10)
+    config = _make_config(iterations=10)
     optimizer = optax.sgd(0.01)
     padding_multiple = 8
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
         loss_fn=_quadratic_loss,
         optimizer=optimizer,
         padding_multiple=padding_multiple,
@@ -451,11 +449,11 @@ class DPTrainerPrecompileTest(parameterized.TestCase):
     """precompile should deep-copy the RNG, not consume the caller's."""
     params = jnp.array([1.0])
     dataset = np.array([[0.0]] * 5)  # 5 examples.
-    plan = _make_plan(iterations=3)
+    config = _make_config(iterations=3)
     optimizer = optax.sgd(0.01)
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
         loss_fn=_quadratic_loss,
         optimizer=optimizer,
     )
@@ -475,11 +473,11 @@ class DPTrainerPrecompileTest(parameterized.TestCase):
     """precompile() should work with abstract ShapeDtypeStruct inputs."""
     params = jax.ShapeDtypeStruct((3,), jnp.float32)
     dataset = jax.ShapeDtypeStruct((5, 3), jnp.float32)
-    plan = _make_plan(iterations=3)
+    config = _make_config(iterations=3)
     optimizer = optax.sgd(0.01)
 
     trainer = training.DPTrainer(
-        plan=plan,
+        config=config,
         loss_fn=_quadratic_loss,
         optimizer=optimizer,
     )
@@ -500,12 +498,17 @@ class DPTrainerPrecompileTest(parameterized.TestCase):
     params = jnp.array([1.0])
     dataset = np.array([[i] for i in range(50)])
 
+    # Use a stochastic batch strategy so precompile sees several batch sizes.
+    # ``_FixedPlanConfig`` lets us inject a custom plan through the config API.
     plan = dataclasses.replace(
-        _make_plan(iterations=5),
+        _make_config(iterations=5).make(),
         batch_selection_strategy=batch_selection.CyclicPoissonSampling(0.5, 5),
     )
     trainer = training.DPTrainer(
-        plan=plan, loss_fn=loss_fn, optimizer=optax.sgd(1), padding_multiple=1
+        config=_FixedPlanConfig(plan),
+        loss_fn=loss_fn,
+        optimizer=optax.sgd(1),
+        padding_multiple=1,
     )
 
     with self.assertLogs(level='INFO') as logs:
@@ -515,6 +518,26 @@ class DPTrainerPrecompileTest(parameterized.TestCase):
         self.assertNotIn('JIT-compiling train_step for batch size', log)
       self.assertEqual(trace_count[0], 5)
       self.assertLen(logs.output, 5)
+
+  @parameterized.parameters(jnp.bfloat16, jnp.float16, jnp.float32)
+  def test_fit_precompile_low_precision_params(self, param_dtype):
+    """precompile=True works when optax promotes low-precision moments."""
+    params = jnp.ones((3,), dtype=param_dtype)
+    dataset = np.zeros((10, 3), dtype=np.float32)
+    trainer = training.DPTrainer(
+        config=_make_config(iterations=5),
+        loss_fn=_quadratic_loss,
+        optimizer=optax.adamw(1e-3),
+    )
+
+    with self.assertLogs(level='INFO') as logs:
+      state = trainer.fit(dataset, params, rng_or_seed=0, precompile=True)
+
+    self.assertEqual(int(state.step), 5)
+    self.assertEqual(state.params.dtype, param_dtype)
+    # AOT precompilation should be effective (no JIT cache misses).
+    for log in logs.output:
+      self.assertNotIn('Cache Miss', log)
 
 
 if __name__ == '__main__':

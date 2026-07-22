@@ -275,7 +275,8 @@ def _streaming_matrix_factorization_privatizer(
 
   def init(model):
     intermediate = jax.tree.map(strategy.get_noise_structure, model)
-    return prng_key, noising_matrix.init_multiply(intermediate)
+    # downstream users may donate this state to JIT, so we copy prng_key here.
+    return jnp.copy(prng_key), noising_matrix.init_multiply(intermediate)
 
   def update(sum_of_clipped_grads, noise_state, params=None):
     del params  # Unused, but expected by optax.GradientTransformation API.

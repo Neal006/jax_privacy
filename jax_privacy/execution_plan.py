@@ -53,7 +53,7 @@ from __future__ import annotations
 
 import dataclasses
 import functools
-from typing import Callable
+from typing import Callable, Protocol
 
 import dp_accounting
 import jax
@@ -157,6 +157,23 @@ class DPExecutionPlan:
   noise_addition_transform: optax.GradientTransformation
   dp_event: dp_accounting.DpEvent
   neighboring_relation: NeighboringRelation
+
+
+class ExecutionPlanConfig(Protocol):
+  """Protocol for configs that build a ``DPExecutionPlan``.
+
+  Any config that produces a :class:`DPExecutionPlan` from
+  :class:`PerformanceFlags` satisfies this protocol (e.g.
+  :class:`BandMFConfig`).
+  Consuming a config rather than a pre-built plan lets callers read
+  performance-only settings (such as the aggregation ``dtype``) directly from
+  the :class:`PerformanceFlags` without materializing the plan.
+  """
+
+  def make(
+      self, performance_flags: PerformanceFlags | None = None
+  ) -> DPExecutionPlan:
+    """Returns a ``DPExecutionPlan`` configured with ``performance_flags``."""
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
