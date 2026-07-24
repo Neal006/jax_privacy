@@ -174,7 +174,9 @@ class DPTrainer:
         noise_state=self.plan.noise_addition_transform.init(params),
     )
 
-  @jax.jit(static_argnames=["self"], donate_argnames=["state"])
+  @functools.partial(
+      jax.jit, static_argnames=["self"], donate_argnames=["state"]
+  )
   def train_step(
       self,
       state: TrainingState,
